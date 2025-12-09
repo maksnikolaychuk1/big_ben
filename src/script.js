@@ -281,7 +281,6 @@ smokeFolder.addColor(smokeParams, 'color').onChange(v => {
 })
 
 smokeFolder.open()
-
 const smokeGroup = new THREE.Group()
 scene.add(smokeGroup)
 
