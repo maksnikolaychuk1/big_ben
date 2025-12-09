@@ -12,8 +12,6 @@ import { color } from 'three/tsl'
 // Debug
 const gui = new GUI()
 
-
-
 // Canvas
 const canvas = document.querySelector('canvas.webgl')
 
@@ -80,6 +78,13 @@ gltfLoader.load('./assets/bigben/scene.gltf', (gltf) => {
     const bigben = gltf.scene
     bigben.scale.set(5, 5, 5)
     bigben.position.set(-50, -4.30, 0)
+
+        bigben.traverse(o => {
+        if(o.isMesh){
+            o.castShadow = true
+            o.receiveShadow = true
+        }
+    })
     scene.add(bigben)
 })
 
@@ -91,6 +96,13 @@ gltfLoader.load('./assets/bench/scene.gltf', (gltf) => {
     const bench = gltf.scene
     bench.scale.set(0.5, 0.5, 0.5)
     bench.position.set(-6, 0, 4)
+
+    bench.traverse(o => {
+        if(o.isMesh){
+            o.castShadow = true
+            o.receiveShadow = true
+        }
+    })
     scene.add(bench)
 
     bench1 = bench.clone()
@@ -113,6 +125,13 @@ gltfLoader.load('./assets/fountain/scene.gltf', (gltf) => {
     const fountain = gltf.scene
     fountain.scale.set(0.1, 0.1, 0.1)
     fountain.position.set(-4.4, 0, 6)
+    
+    fountain.traverse(o => {
+        if(o.isMesh){
+            o.castShadow = true
+            o.receiveShadow = true
+        }
+    })
     scene.add(fountain)
 })
 /**
@@ -134,14 +153,10 @@ const floor = new THREE.Mesh(
     })
 )
 
-// gui.add(floor.material, 'displacementScale').min(0).max(1).step(0.001).name('floorDisplacementScale')
-// gui.add(floor.material, 'displacementBias').min(-1).max(1).step(0.001).name('floorDisplacementBias')
-
 floor.rotation.x = - Math.PI * 0.5
 scene.add(floor)
 
 // Road
-
 const roadWidth = 3
 const roadLength = 20
 const roadHeight = 0.1
@@ -164,6 +179,137 @@ road.position.x = 5
 road.position.z = 0
 
 scene.add(road)
+
+// Smoke Shader Material
+const smokeTexture = textureLoader.load('./smoke/noiseTexture.png')
+
+smokeTexture.wrapS = THREE.RepeatWrapping
+smokeTexture.wrapT = THREE.RepeatWrapping
+
+const smokeParams = {
+    speed: 4.0,
+    opacity: 0.15,
+    color: '#e5e5e5'
+}
+
+const smokeMaterial = new THREE.ShaderMaterial({
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.NormalBlending,
+    side: THREE.DoubleSide,
+
+    uniforms: {
+        uTexture: { value: smokeTexture },
+        uTime: { value: 0.0 },
+        uSpeed: { value: smokeParams.speed },
+        uOpacity: { value: smokeParams.opacity },
+        uColor: { value: new THREE.Color(smokeParams.color) }
+    },
+
+    vertexShader: `
+        varying vec2 vUv;
+
+        void main(){
+            vUv = uv;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.);
+        }
+    `,
+
+    fragmentShader: `
+        uniform sampler2D uTexture;
+        uniform float uTime;
+        uniform float uSpeed;
+        uniform float uOpacity;
+        uniform vec3 uColor;
+
+        varying vec2 vUv;
+
+
+        // простий псевдо-noise рух
+        vec2 flow(vec2 uv, float speed){
+            uv += vec2(
+                sin(uTime * speed * uSpeed + uv.y * 2.0),
+                cos(uTime * speed * uSpeed * 1.3 + uv.x * 2.0)
+            );
+            return uv;
+        }
+
+        void main(){
+
+            vec2 uv = vUv;
+
+            // Щільний масштаб патерну
+            uv *= 3.5;
+
+            // 2 незалежні напрями руху
+            vec2 uv1 = flow(uv, 0.15);
+            vec2 uv2 = flow(uv * 1.3 + 10.0, 0.08);
+
+            float n1 = texture2D(uTexture, uv1).r;
+            float n2 = texture2D(uTexture, uv2).r;
+
+            float smoke = (n1 + n2) * 0.5;
+
+            // Контрастність
+            smoke = smoothstep(0.3, 1.0, smoke);
+
+            // Вінеєтка країв площин
+            smoke *= smoothstep(0.0, 0.15, vUv.x);
+            smoke *= smoothstep(1.0, 0.85, vUv.x);
+            smoke *= smoothstep(0.0, 0.15, vUv.y);
+            smoke *= smoothstep(1.0, 0.85, vUv.y);
+
+            gl_FragColor = vec4(uColor, smoke * uOpacity);
+
+
+            #include <colorspace_fragment>
+        }
+    `
+});
+const smokeFolder = gui.addFolder('Ground Fog')
+
+smokeFolder.add(smokeParams, 'speed', 0.1, 10, 0.01).onChange(v => {
+    smokeMaterial.uniforms.uSpeed.value = v
+})
+
+smokeFolder.add(smokeParams, 'opacity', 0.01, 0.5, 0.01).onChange(v => {
+    smokeMaterial.uniforms.uOpacity.value = v
+})
+
+smokeFolder.addColor(smokeParams, 'color').onChange(v => {
+    smokeMaterial.uniforms.uColor.value.set(v)
+})
+
+smokeFolder.open()
+
+const smokeGroup = new THREE.Group()
+scene.add(smokeGroup)
+
+const layerCount = 9
+const floorSize = 15
+
+for(let i = 0; i < layerCount; i++){
+
+    const plane = new THREE.Mesh(
+        new THREE.PlaneGeometry(floorSize + 4, floorSize + 4),
+        smokeMaterial
+    )
+
+    plane.rotation.x = -Math.PI / 2
+
+    // висота шару
+    plane.position.y = 0.05 + i * 0.10
+
+    // дрібні зсуви для хаосу
+    plane.position.x = (Math.random() - 0.5) * 3
+    plane.position.z = (Math.random() - 0.5) * 3
+
+    // варіація масштабів
+    const s = 0.9 + Math.random() * 0.3
+    plane.scale.set(s, s, s)
+
+    smokeGroup.add(plane)
+}
 
 
 /**
@@ -232,43 +378,20 @@ renderer.shadowMap.type = THREE.PCFSoftShadowMap
  */
 // Cast and receive
 directionalLight.castShadow = true
-
-// ghost1.castShadow = true
-// ghost2.castShadow = true
-// ghost3.castShadow = true
-
-// walls.castShadow = true
-// walls.receiveShadow = true
-// roof.castShadow = true
 floor.receiveShadow = true
 
-// for(const grave of graves.children)
-// {
-//     grave.castShadow = true
-//     grave.receiveShadow = true
-// }
-
 // Mappings
-directionalLight.shadow.mapSize.width = 256
-directionalLight.shadow.mapSize.height = 256
-directionalLight.shadow.camera.top = 8
-directionalLight.shadow.camera.right = 8
-directionalLight.shadow.camera.bottom = - 8
-directionalLight.shadow.camera.left = - 8
+directionalLight.shadow.mapSize.set(512, 512)
+
 directionalLight.shadow.camera.near = 1
-directionalLight.shadow.camera.far = 20
+directionalLight.shadow.camera.far = 60
 
-// ghost1.shadow.mapSize.width = 256
-// ghost1.shadow.mapSize.height = 256
-// ghost1.shadow.camera.far = 10
+directionalLight.shadow.camera.top = 25
+directionalLight.shadow.camera.right = 25
+directionalLight.shadow.camera.bottom = -25
+directionalLight.shadow.camera.left = -25
 
-// ghost2.shadow.mapSize.width = 256
-// ghost2.shadow.mapSize.height = 256
-// ghost2.shadow.camera.far = 10
-
-// ghost3.shadow.mapSize.width = 256
-// ghost3.shadow.mapSize.height = 256
-// ghost3.shadow.camera.far = 10
+directionalLight.shadow.bias = -0.0003
 
 /**
  * Sky
@@ -310,13 +433,6 @@ const rainMaterial = new THREE.PointsMaterial({
 const rain = new THREE.Points(rainGeometry, rainMaterial)
 scene.add(rain)
 
-/**
- * Fog
- */
-// scene.fog = new THREE.Fog('#04343f', 1, 13)
-// scene.fog = new THREE.FogExp2('#04343f', 0.1)
-
-
 
 /**
  * Animate
@@ -328,6 +444,9 @@ const tick = () =>
     // Timer
     timer.update()
     const elapsedTime = timer.getElapsed()
+    
+    // Smoke animation
+    smokeMaterial.uniforms.uTime.value = elapsedTime
 
     // Rain animation
     const positions = rain.geometry.attributes.position.array
