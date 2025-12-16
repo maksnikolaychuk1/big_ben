@@ -4,7 +4,7 @@ import { Timer } from 'three/addons/misc/Timer.js'
 import { Sky } from 'three/addons/objects/Sky.js'
 import GUI from 'lil-gui'
 import { GLTFLoader } from 'three/examples/jsm/Addons.js'
-import { color } from 'three/tsl'
+import { gsap } from 'gsap'
 
 /**
  * Base
@@ -18,6 +18,53 @@ const canvas = document.querySelector('canvas.webgl')
 // Scene
 const scene = new THREE.Scene()
 
+/**
+Overlay
+ */
+const overlayGeometry = new THREE.PlaneGeometry(2, 2, 1, 1)
+const overlayMaterial = new THREE.ShaderMaterial({
+  transparent: true,
+  uniforms: {
+    uAlpha: { value: 1 },
+  },
+  vertexShader: `
+    void main() { gl_Position = vec4(position, 1.0); }
+  `,
+  fragmentShader: `
+    uniform float uAlpha;
+    void main() { gl_FragColor = vec4(0.0, 0.0, 0.0, uAlpha); }
+  `,
+});
+ const overlay = new THREE.Mesh(overlayGeometry, overlayMaterial)
+ scene.add(overlay)
+
+ /**
+Loaders
+ */
+const loadingBarElement = document.querySelector('.loading-bar')
+const loadingManager = new THREE.LoadingManager(
+ // Loaded
+ () =>
+  {
+ window.setTimeout(() =>
+ {
+ gsap.to(overlayMaterial.uniforms.uAlpha, { duration: 3, value: 0, delay: 1, onComplete: () => {
+        overlay.geometry.dispose()
+        overlay.material.dispose()
+        scene.remove(overlay)
+    } })
+       loadingBarElement.classList.add('ended')
+        loadingBarElement.style.transform = ''
+    }, 500)
+},
+// Progress
+(itemUrl, itemsLoaded, itemsTotal) =>
+{
+    const progressRatio = itemsLoaded / itemsTotal
+    loadingBarElement.style.transform = `scaleX(${progressRatio})`
+}
+)
+const gltfLoader = new GLTFLoader(loadingManager)
 /**
  * Textures
  */
@@ -72,8 +119,7 @@ roadDisplacementTexture.repeat.set(1, 6)
 
 roadColorTexture.colorSpace = THREE.SRGBColorSpace
 
-//GLTF Loader
-const gltfLoader = new GLTFLoader()
+//Models
 gltfLoader.load('./assets/bigben/scene.gltf', (gltf) => {
     const bigben = gltf.scene
     bigben.scale.set(5, 5, 5)
@@ -356,9 +402,14 @@ camera.position.y = 2
 camera.position.z = 5
 scene.add(camera)
 
+
 // Controls
 const controls = new OrbitControls(camera, canvas)
 controls.enableDamping = true
+controls.minDistance = 2
+controls.maxDistance = 15
+controls.minPolarAngle = Math.PI * 0.2
+controls.maxPolarAngle = Math.PI * 0.49
 
 /**
  * Renderer
@@ -370,7 +421,6 @@ renderer.setSize(sizes.width, sizes.height)
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
 renderer.shadowMap.enabled = true
 renderer.shadowMap.type = THREE.PCFSoftShadowMap
-
 
 /**
  * Shadows
@@ -431,7 +481,6 @@ const rainMaterial = new THREE.PointsMaterial({
 
 const rain = new THREE.Points(rainGeometry, rainMaterial)
 scene.add(rain)
-
 
 /**
  * Animate
