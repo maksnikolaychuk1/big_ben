@@ -5,7 +5,7 @@ import { Sky } from 'three/addons/objects/Sky.js'
 import GUI from 'lil-gui'
 import { GLTFLoader } from 'three/examples/jsm/Addons.js'
 import { gsap } from 'gsap'
-
+import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js'
 /**
  * Base
  */
@@ -65,6 +65,7 @@ const loadingManager = new THREE.LoadingManager(
 }
 )
 const gltfLoader = new GLTFLoader(loadingManager)
+const rgbeLoader = new RGBELoader(loadingManager)
 /**
  * Textures
  */
@@ -118,6 +119,17 @@ roadARMTexture.repeat.set(1, 6)
 roadDisplacementTexture.repeat.set(1, 6)
 
 roadColorTexture.colorSpace = THREE.SRGBColorSpace
+
+rgbeLoader.load('/hdr/qwantani_dusk_2_puresky_4k.hdr', (environmentMap) =>
+{
+    environmentMap.mapping = THREE.EquirectangularReflectionMapping
+
+    scene.background = environmentMap
+    scene.environment = environmentMap
+
+    scene.environmentIntensity = 0.05
+    scene.backgroundIntensity = 0.1
+})
 
 //Models
 gltfLoader.load('./assets/bigben/scene.gltf', (gltf) => {
@@ -441,20 +453,6 @@ directionalLight.shadow.camera.bottom = -25
 directionalLight.shadow.camera.left = -25
 
 directionalLight.shadow.bias = -0.0003
-
-/**
- * Sky
- */
-const sky = new Sky()
-sky.scale.set(100, 100, 100)
-scene.add(sky)
-
-
-sky.material.uniforms['turbidity'].value = 10
-sky.material.uniforms['rayleigh'].value = 3
-sky.material.uniforms['mieCoefficient'].value = 0.1
-sky.material.uniforms['mieDirectionalG'].value = 0.95
-sky.material.uniforms['sunPosition'].value.set(0.3, -0.038, -0.95)
 
 /**
  * Rain particles
